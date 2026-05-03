@@ -1,6 +1,5 @@
 const express = require("express");
 const multer = require("multer");
-const pdfParse = require("pdf-parse/lib/pdf-parse.js");
 const cors = require("cors");
 
 const app = express();
@@ -21,16 +20,26 @@ app.post("/extraer-pdf", upload.single("pdf"), async (req, res) => {
       return res.status(400).json({ error: "No se recibió ningún archivo PDF" });
     }
 
-    const data = await pdfParse(req.file.buffer);
-    const texto = data.text;
+    const pdfjsLib = await import("pdfjs-dist/legacy/build/pdf.mjs");
+    const data = new Uint8Array(req.file.buffer);
+    const loadingTask = pdfjsLib.getDocument({ data });
+    const pdf = await loadingTask.promise;
 
-    if (!texto || texto.trim().length < 10) {
+    let textoCompleto = "";
+    for (let i = 1; i <= pdf.numPages; i++) {
+      const page = await pdf.getPage(i);
+      const content = await page.getTextContent();
+      const textoPage = content.items.map((item) => item.str).join(" ");
+      textoCompleto += textoPage + "\n";
+    }
+
+    if (!textoCompleto || textoCompleto.trim().length < 10) {
       return res.status(400).json({ error: "No se pudo extraer texto del PDF. El archivo puede estar escaneado como imagen." });
     }
 
     res.json({
-      texto: texto.trim(),
-      paginas: data.numpages,
+      texto: textoCompleto.trim(),
+      paginas: pdf.numPages,
       nombre: req.file.originalname,
     });
   } catch (error) {
